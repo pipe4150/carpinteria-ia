@@ -1,47 +1,40 @@
-// 1. El "Plano" o Contrato de cómo debe ser cada mueble en nuestro sistema
 export interface Mueble {
   id: string;
   nombre: string;
-  linea: 'Milán Nordik' | 'Habitat Smart'; // Usamos unión de tipos para restringir las opciones
   descripcion: string;
-  precioBase: number; // Siempre en número limpio para poder hacer operaciones matemáticas después
-  dimensionesPorDefecto: {
-    ancho: number; // en centímetros
-    alto: number;
-    fondo: number;
-  };
-  materialesDisponibles: string[];
-  imagenUrl: string;
+  precioBase: number; 
+  imagen: string;
+  categoria: 'Cocina' | 'Closet' | 'Entretenimiento' | 'Baño';
+  materialesDisponibles: string[]; 
 }
 
-// 2. Nuestra "Bodega" real con los dos productos inspirados en tus referencias
-export const CATALOGO_MUEBLES: Mueble[] = [
+// Fíjate bien en este nombre: "catalogoMuebles"
+export const catalogoMuebles: Mueble[] = [
   {
-    id: 'milan-nordik-tv',
-    nombre: 'Centro de Entretenimiento Milán Nordik',
-    linea: 'Milán Nordik',
-    descripcion: 'Panel central con acabado tipo piedra premium, iluminación posterior LED cálida integrada y sección lateral en alistonado de madera noble. Mueble inferior flotante con sistema de apertura push.',
-    precioBase: 1850000, // Precio estimado en COP para iniciar
-    dimensionesPorDefecto: {
-      ancho: 200,
-      alto: 160,
-      fondo: 35
-    },
-    materialesDisponibles: ['Melamina RH Nogal', 'Poliuretano Blanco Brillante', 'Mármol Sintético'],
-    imagenUrl: 'https://images.unsplash.com/photo-1595428774223-ef52624120d2?w=600&q=80' // Imagen temporal de prueba
+    id: '1',
+    nombre: 'Cocina Integral Moderna',
+    descripcion: 'Optimización de espacio, herrajes de cierre lento y módulo para torre de hornos.',
+    precioBase: 3500000, 
+    imagen: 'https://images.unsplash.com/photo-1556911220-e15b29be8c8f?auto=format&fit=crop&w=800&q=80',
+    categoria: 'Cocina',
+    materialesDisponibles: ['Melamina RH', 'Poliuretano', 'Madera Sólida']
   },
   {
-    id: 'habitat-smart-desk',
-    nombre: 'Escritorio Flotante Studio Habitat',
-    linea: 'Habitat Smart',
-    descripcion: 'Optimizado para productividad y teletrabajo. Incluye fondo alistonado decorativo, módulo superior de almacenamiento aéreo con puertas batientes y pasacables oculto bajo la cubierta principal.',
-    precioBase: 1200000,
-    dimensionesPorDefecto: {
-      ancho: 140,
-      alto: 120,
-      fondo: 50
-    },
-    materialesDisponibles: ['Melamina RH Encino', 'Gris Grafito Mate', 'Blanco Niebla'],
-    imagenUrl: 'https://images.unsplash.com/photo-1518455027359-f3f8164ba6bd?w=600&q=80' // Imagen temporal de prueba
+    id: '2',
+    nombre: 'Closet de Pared a Pared',
+    descripcion: 'Distribución interna a medida con maleteros, zapateras extraíbles y pantaloneros.',
+    precioBase: 2200000,
+    imagen: 'https://images.unsplash.com/photo-1558882224-cca166733360?auto=format&fit=crop&w=800&q=80',
+    categoria: 'Closet',
+    materialesDisponibles: ['Melamina Estándar', 'Melamina RH']
+  },
+  {
+    id: '3',
+    nombre: 'Centro de Entretenimiento',
+    descripcion: 'Diseño flotante con pasacables ocultos y luces LED decorativas empotradas.',
+    precioBase: 1800000,
+    imagen: 'https://images.unsplash.com/photo-1595428774223-ef52624120d2?auto=format&fit=crop&w=800&q=80',
+    categoria: 'Entretenimiento',
+    materialesDisponibles: ['Melamina', 'MDF Pintado']
   }
 ];
