@@ -1,191 +1,291 @@
-"use client";
+'use client';
 
-import { useState } from 'react';
-import Link from 'next/link';
+import { useState, useEffect } from 'react';
+import { calcularPresupuesto, ParametrosCotizacion, ResultadoCotizacion } from '@/data/cotizador';
 
-// Precios base modificados para calcular por METRO CÚBICO (Volumen) de material estructurado
-const PRECIOS_MATERIALES: Record<string, number> = {
-  'Melamina Estándar': 450000,
-  'Melamina RH (Resistente Humedad)': 600000,
-  'MDF Pintado / Poliuretano': 1050000,
-  'Madera Sólida': 1500000,
-};
+export default function CotizarPage() {
+  const [categoria, setCategoria] = useState<ParametrosCotizacion['categoria']>('centro-entretenimiento');
+  const [ancho, setAncho] = useState<number>(1.80);
+  const [alto, setAlto] = useState<number>(1.20);
+  const [fondo, setFondo] = useState<string>('');
+  const [material, setMaterial] = useState<ParametrosCotizacion['tipoMaterial']>('estandar');
+  const [herraje, setHerraje] = useState<ParametrosCotizacion['tipoHerraje']>('estandar');
+  const [resultado, setResultado] = useState<ResultadoCotizacion | null>(null);
 
-const PRECIOS_HERRAJES: Record<string, number> = {
-  'Estándar (Cierre normal)': 0,
-  'Premium (Cierre lento / Push)': 120000,
-  'Alta Gama (Marcas como Blum)': 350000,
-};
+  const [ideaUsuario, setIdeaUsuario] = useState<string>('');
+  const [cargandoIA, setCargandoIA] = useState<boolean>(false);
+  const [feedbackIA, setFeedbackIA] = useState<string>('');
+  const [colorSugerido, setColorSugerido] = useState<string>('');
 
-export default function CotizadorPage() {
-  const [tipoMueble, setTipoMueble] = useState<string>('Cocina');
-  const [material, setMaterial] = useState<string>('Melamina RH (Resistente Humedad)');
-  const [herraje, setHerraje] = useState<string>('Estándar (Cierre normal)');
-  
-  // 1. AÑADIMOS LAS TRES MEDIDAS TÉCNICAS (Ancho, Alto, Profundidad)
-  const [ancho, setAncho] = useState<number>(120);
-  const [alto, setAlto] = useState<number>(80);
-  const [profundidad, setProfundidad] = useState<number>(60); // Fondo estándar por defecto (60cm)
+  useEffect(() => {
+    const fondoNum = fondo !== '' ? parseFloat(fondo) : undefined;
+    const presupuesto = calcularPresupuesto({
+      categoria,
+      anchoMts: ancho,
+      altoMts: alto,
+      fondoMts: fondoNum,
+      tipoMaterial: material,
+      tipoHerraje: herraje
+    });
+    setResultado(presupuesto);
+  }, [categoria, ancho, alto, fondo, material, herraje]);
 
-  // 2. NUEVA FÓRMULA MATEMÁTICA EN 3D
-  const calcularPrecioTotal = () => {
-    // Convertimos las tres medidas a metros para calcular el volumen en metros cúbicos (m³)
-    const volumenMetrosCubicos = (ancho / 100) * (alto / 100) * (profundidad / 100);
-    
-    let costoBaseMueble = 600000; // Costo base fijo por el ensamble, colas, tornillos y armado
-    if (tipoMueble === 'Closet') costoBaseMueble = 900000;
-    if (tipoMueble === 'Entretenimiento') costoBaseMueble = 500000;
-    if (tipoMueble === 'Baño') costoBaseMueble = 350000;
+  const procesarIdeaConIA = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ideaUsuario.trim()) return;
 
-    // El costo del material ahora depende de las tres dimensiones combinadas
-    const costoMaterial = (PRECIOS_MATERIALES[material] || 0) * volumenMetrosCubicos;
-    const costoHerraje = PRECIOS_HERRAJES[herraje] || 0;
+    setCargandoIA(true);
+    setFeedbackIA('');
 
-    return Math.round(costoBaseMueble + costoMaterial + costoHerraje);
+    try {
+      const respuesta = await fetch('/api/asistente-ia', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mensajeUsuario: ideaUsuario }),
+      });
+
+      const datos = await respuesta.json();
+
+      if (datos.error) {
+        setFeedbackIA('No pude procesar tu idea en este momento. Intenta de nuevo.');
+      } else {
+        const sug = datos.configuracionSugerida;
+        if (sug.categoria) setCategoria(sug.categoria);
+        if (sug.anchoMts) setAncho(sug.anchoMts);
+        if (sug.altoMts) setAlto(sug.altoMts);
+        if (sug.tipoMaterial) setMaterial(sug.tipoMaterial);
+        if (sug.tipoHerraje) setHerraje(sug.tipoHerraje);
+        
+        setFeedbackIA(datos.analisisExplicativo);
+        if (datos.colorSugerido) setColorSugerido(datos.colorSugerido);
+      }
+    } catch (error) {
+      setFeedbackIA('Ocurrió un error al conectar con el servidor de diseño.');
+    } finally {
+      setCargandoIA(false);
+    }
   };
-
-  const formatearCOP = (valor: number) => {
-    return new Intl.NumberFormat('es-CO', {
-      style: 'currency',
-      currency: 'COP',
-      minimumFractionDigits: 0,
-    }).format(valor);
-  };
-
-  const precioEstimado = calcularPrecioTotal();
-
-  // 3. ACTUALIZAMOS EL MENSAJE DE WHATSAPP PARA QUE INCLUYA LA PROFUNDIDAD
-  const mensajeWhatsApp = encodeURIComponent(
-    `¡Hola! Acabo de usar el cotizador web. Deseo un presupuesto para un mueble tipo: ${tipoMueble}.\n` +
-    `- Material: ${material}\n` +
-    `- Herrajes: ${herraje}\n` +
-    `- Medidas: Ancho ${ancho}cm x Alto ${alto}cm x Fondo ${profundidad}cm\n` +
-    `- Precio estimado en la web: ${formatearCOP(precioEstimado)}`
-  );
 
   return (
-    <div className="min-h-screen bg-neutral-50 text-neutral-800 font-sans p-4 md:p-8">
-      <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 bg-white p-6 md:p-10 rounded-2xl border border-neutral-200 shadow-xl">
+    <main className="min-h-screen bg-neutral-100 py-12 px-4">
+      <div className="max-w-6xl mx-auto">
         
-        {/* COLUMNA IZQUIERDA: FORMULARIO */}
-        <div className="space-y-6">
-          <div>
-            <Link href="/" className="text-xs font-semibold text-amber-700 hover:underline flex items-center gap-1 mb-2">
-              ← Volver al inicio
-            </Link>
-            <h1 className="text-3xl font-extrabold text-neutral-900 tracking-tight">Cotizador Técnico</h1>
-            <p className="text-sm text-neutral-500 mt-1">Configura las piezas base para calcular costos de producción.</p>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-xs font-bold uppercase tracking-wider text-neutral-500">1. Tipo de Estructura</label>
-            <select 
-              value={tipoMueble} 
-              onChange={(e) => setTipoMueble(e.target.value)}
-              className="w-full bg-neutral-50 border border-neutral-200 rounded-lg p-3 text-sm focus:outline-none focus:border-amber-600 transition-colors"
-            >
-              <option value="Cocina">Módulo de Cocina</option>
-              <option value="Closet">Clóset / Vestier</option>
-              <option value="Entretenimiento">Centro de Entretenimiento</option>
-              <option value="Baño">Mueble de Baño</option>
-            </select>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-xs font-bold uppercase tracking-wider text-neutral-500">2. Material del Tablero</label>
-            <select 
-              value={material} 
-              onChange={(e) => setMaterial(e.target.value)}
-              className="w-full bg-neutral-50 border border-neutral-200 rounded-lg p-3 text-sm focus:outline-none focus:border-amber-600 transition-colors"
-            >
-              {Object.keys(PRECIOS_MATERIALES).map((mat) => (
-                <option key={mat} value={mat}>{mat}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-xs font-bold uppercase tracking-wider text-neutral-500">3. Sistema de Herrajes</label>
-            <select 
-              value={herraje} 
-              onChange={(e) => setHerraje(e.target.value)}
-              className="w-full bg-neutral-50 border border-neutral-200 rounded-lg p-3 text-sm focus:outline-none focus:border-amber-600 transition-colors"
-            >
-              {Object.keys(PRECIOS_HERRAJES).map((herr) => (
-                <option key={herr} value={herr}>{herr}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* 4. SECCIÓN DE DIMENSIONES MODIFICADA (Ahora son 3 inputs en grid) */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold uppercase tracking-wider text-neutral-500">4. Dimensiones del Módulo (cm)</label>
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <span className="text-[11px] text-neutral-400 block font-medium">Ancho (cm)</span>
-                <input 
-                  type="number" 
-                  value={ancho} 
-                  onChange={(e) => setAncho(Number(e.target.value))}
-                  className="w-full bg-neutral-50 border border-neutral-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-amber-600 transition-colors mt-1"
-                />
-              </div>
-              <div>
-                <span className="text-[11px] text-neutral-400 block font-medium">Alto (cm)</span>
-                <input 
-                  type="number" 
-                  value={alto} 
-                  onChange={(e) => setAlto(Number(e.target.value))}
-                  className="w-full bg-neutral-50 border border-neutral-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-amber-600 transition-colors mt-1"
-                />
-              </div>
-              <div>
-                {/* Agregamos el input visual para la Profundidad */}
-                <span className="text-[11px] text-neutral-400 block font-medium">Fondo / Prof. (cm)</span>
-                <input 
-                  type="number" 
-                  value={profundidad} 
-                  onChange={(e) => setProfundidad(Number(e.target.value))}
-                  className="w-full bg-neutral-50 border border-neutral-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-amber-600 transition-colors mt-1"
-                />
-              </div>
-            </div>
-          </div>
+        <div className="text-center mb-10">
+          <h1 className="text-3xl md:text-5xl font-extrabold text-neutral-900 tracking-tight">
+            Cotizador <span className="text-amber-600">3D Inteligente</span>
+          </h1>
+          <p className="mt-2 text-neutral-600 max-w-xl mx-auto text-sm">
+            Describe tu idea en texto o manipula los controles manuales para obtener un presupuesto industrial instantáneo en Bogotá.
+          </p>
         </div>
 
-        {/* COLUMNA DERECHA: RESULTADO EN TIEMPO REAL */}
-        <div className="bg-neutral-900 text-white p-6 rounded-xl flex flex-col justify-between border border-neutral-800 space-y-6 md:space-y-0">
-          <div className="space-y-4">
-            <span className="inline-block bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-bold px-2.5 py-1 rounded-md uppercase tracking-wide">
-              Presupuesto Técnico
-            </span>
+        <div className="bg-gradient-to-r from-amber-600 to-amber-700 p-6 rounded-2xl shadow-md text-white mb-8">
+          <h2 className="text-lg font-bold flex items-center gap-2 mb-2">
+            ✨ Asistente de Diseño IA (Co-Diseñador de Carpintería)
+          </h2>
+          <p className="text-amber-100 text-xs md:text-sm mb-4">
+            Escribe con tus propias palabras qué mueble imaginas. Nuestro cerebro digital configurará los planos por ti.
+          </p>
+          
+          <form onSubmit={procesarIdeaConIA} className="flex flex-col md:flex-row gap-3">
+            <input
+              type="text"
+              required
+              disabled={cargandoIA}
+              value={ideaUsuario}
+              onChange={(e) => setIdeaUsuario(e.target.value)}
+              placeholder="Ej: Necesito un clóset moderno para mi alcoba con espacio para maletas..."
+              className="flex-1 px-4 py-3 rounded-xl text-neutral-900 placeholder-neutral-400 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 disabled:bg-neutral-200"
+            />
+            <button
+              type="submit"
+              disabled={cargandoIA}
+              className="bg-neutral-900 hover:bg-neutral-800 text-white font-semibold px-6 py-3 rounded-xl text-sm transition-colors shadow disabled:bg-neutral-700 flex items-center justify-center min-w-[140px]"
+            >
+              {cargandoIA ? (
+                <span className="inline-block animate-pulse">Analizando...</span>
+              ) : (
+                'Diseñar con IA'
+              )}
+            </button>
+          </form>
+
+          {feedbackIA && (
+            <div className="mt-4 bg-neutral-900 border-l-4 border-amber-500 p-5 rounded-r-xl shadow-inner animate-fadeIn">
+              <p className="font-bold text-amber-400 text-xs uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                🤖 Propuesta de Diseño de la IA:
+              </p>
+              <p className="text-neutral-200 leading-relaxed text-sm font-medium">
+                {feedbackIA}
+              </p>
+              {colorSugerido && (
+                <div className="mt-3 pt-3 border-t border-neutral-800/60 flex items-center gap-2">
+                  <span className="inline-block w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+                  <p className="text-xs font-semibold text-amber-300">
+                    🎨 Paleta de melamina sugerida: <span className="text-white underline decoration-amber-500/50">{colorSugerido}</span>
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          
+          <div className="lg:col-span-7 bg-white p-6 rounded-2xl shadow-sm border border-neutral-200 space-y-6">
+            <h2 className="text-xl font-bold text-neutral-800 border-b pb-3">Configuración Actual del Mueble</h2>
+            
             <div>
-              <p className="text-sm text-neutral-400 font-medium">Valor Total Estimado (Mano de obra e instalación incluidos)</p>
-              <h2 className="text-4xl font-black text-amber-400 mt-1 transition-all">
-                {formatearCOP(precioEstimado)}
-              </h2>
+              <label className="block text-xs font-bold uppercase tracking-wider text-neutral-500 mb-2">Tipo de Mueble</label>
+              <div className="grid grid-cols-2 gap-3">
+                {(['centro-entretenimiento', 'cocina', 'alcoba', 'bano'] as const).map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setCategoria(cat)}
+                    className={`py-3 px-4 rounded-xl border text-sm font-medium transition-all text-center capitalize ${
+                      categoria === cat ? 'border-amber-600 bg-amber-50 text-amber-700 font-semibold shadow-sm' : 'border-neutral-200 hover:bg-neutral-50 text-neutral-600'
+                    }`}
+                  >
+                    {cat.replace('-', ' ')}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div className="text-xs text-neutral-400 space-y-2 pt-2 border-t border-neutral-800">
-              <p>📌 <strong className="text-neutral-200">Estructura volumétrica:</strong> Calculada de forma precisa en base a {ancho}x{alto}x{profundidad} cm.</p>
-              <p>📌 <strong className="text-neutral-200">Desperdicio de corte:</strong> El motor simula el gasto de optimización de lámina.</p>
-              <p>📌 <strong className="text-neutral-200">Nota técnica:</strong> Este valor puede variar según visitas técnicas a obra en Bogotá.</p>
+            <div className="space-y-4 pt-2">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-500">Dimensiones (Metros)</h3>
+              
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-neutral-600 font-medium">Ancho: <strong className="text-neutral-900">{ancho.toFixed(2)} mts</strong></span>
+                  <span className="text-xs text-neutral-400">Máx (Lámina): 2.44 mts</span>
+                </div>
+                <input
+                  type="range" min="0.50" max="5.00" step="0.05"
+                  value={ancho}
+                  onChange={(e) => setAncho(parseFloat(e.target.value))}
+                  className="w-full accent-amber-600 cursor-pointer"
+                />
+              </div>
+
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-neutral-600 font-medium">Alto: <strong className="text-neutral-900">{alto.toFixed(2)} mts</strong></span>
+                </div>
+                <input
+                  type="range" min="0.30" max="2.60" step="0.05"
+                  value={alto}
+                  onChange={(e) => setAlto(parseFloat(e.target.value))}
+                  className="w-full accent-amber-600 cursor-pointer"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-neutral-500 mb-1">Fondo / Profundidad</label>
+                <div className="relative">
+                  <input
+                    type="number" step="0.01" min="0.10" max="1.20"
+                    placeholder={`Por defecto técnico: ${resultado?.fondoUtilizadoMts.toFixed(2)} mts`}
+                    value={fondo}
+                    onChange={(e) => setFondo(e.target.value)}
+                    className="w-full border border-neutral-200 bg-neutral-50 rounded-xl px-4 py-2.5 text-neutral-800 text-sm focus:outline-none focus:border-amber-500"
+                  />
+                  <span className="absolute right-4 top-2.5 text-sm text-neutral-400 font-medium">mts</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-neutral-500 mb-2">Tipo de Madera</label>
+                <select
+                  value={material}
+                  onChange={(e) => setMaterial(e.target.value as any)}
+                  className="w-full border border-neutral-200 bg-neutral-50 rounded-xl px-4 py-3 text-neutral-800 text-sm focus:outline-none focus:border-amber-500"
+                >
+                  <option value="estandar">Melamina Estándar</option>
+                  <option value="rh">Melamina RH (Resistente a Humedad)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-neutral-500 mb-2">Sistema de Herrajes</label>
+                <select
+                  value={herraje}
+                  onChange={(e) => setHerraje(e.target.value as any)}
+                  className="w-full border border-neutral-200 bg-neutral-50 rounded-xl px-4 py-3 text-neutral-800 text-sm focus:outline-none focus:border-amber-500"
+                >
+                  <option value="estandar">Extensión Corriente / Bisagra Común</option>
+                  <option value="cierre-lento">Cierre Lento Premium</option>
+                  <option value="push-to-open">Sistemas Push To Open</option>
+                </select>
+              </div>
             </div>
           </div>
 
-          <div className="pt-4">
-            <a 
-              href={`https://wa.me/573000000000?text=${mensajeWhatsApp}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold p-4 rounded-xl text-center block transition-all shadow-lg text-sm"
-            >
-              Enviar Diseño a WhatsApp 🚀
-            </a>
+          <div className="lg:col-span-5 space-y-6">
+            {resultado && (
+              <div className="bg-neutral-900 text-white p-6 rounded-2xl shadow-xl border border-neutral-800 flex flex-col justify-between">
+                <div>
+                  <h2 className="text-amber-500 font-bold uppercase tracking-wider text-xs mb-4">Resumen del Presupuesto</h2>
+                  
+                  <div className="mb-6">
+                    <p className="text-3xl md:text-4xl font-black text-white">
+                      ${resultado.precioTotal.toLocaleString('es-CO')} <span className="text-sm font-normal text-neutral-400">COP</span>
+                    </p>
+                    <p className="text-xs text-neutral-400 mt-1">*Precio estimado de fabricación e instalación en Bogotá.</p>
+                  </div>
+
+                  {resultado.requiereEstructuraModular && (
+                    <div className="bg-amber-950 border border-amber-800 rounded-xl p-3 text-xs text-amber-300 mb-6">
+                      ⚠️ <strong>Aviso Estructural:</strong> El ancho ({ancho}m) exige división en <strong>{resultado.numeroModulosEstimados} módulos</strong>.
+                    </div>
+                  )}
+
+                  <div className="border-t border-neutral-800 py-4 space-y-2.5 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-neutral-400">Profundidad aplicada:</span>
+                      <span className="font-semibold text-neutral-200">{resultado.fondoUtilizadoMts.toFixed(2)} mts</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-neutral-400">Tiempo estimado taller:</span>
+                      <span className="font-semibold text-amber-500">{resultado.tiempoEntregaDias} días hábiles</span>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-neutral-800 pt-4 space-y-2 text-xs text-neutral-400">
+                    <p className="font-bold uppercase text-[10px] tracking-widest text-neutral-500 mb-2">Desglose de Costos</p>
+                    <div className="flex justify-between">
+                      <span>Consumo de madera base:</span>
+                      <span>${resultado.desglose.materialBase.toLocaleString('es-CO')} COP</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Sistemas de herrajes:</span>
+                      <span>${resultado.desglose.herrajes.toLocaleString('es-CO')} COP</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Mano de obra y montaje:</span>
+                      <span>${resultado.desglose.manoObraInstalacion.toLocaleString('es-CO')} COP</span>
+                    </div>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={() => {
+                    const texto = `¡Hola! Usé el asistente IA. Quiero fabricar un mueble de categoría: *${categoria.toUpperCase()}*.\n\n*Medidas:*\n- Ancho: ${ancho}m\n- Alto: ${alto}m\n- Fondo: ${resultado.fondoUtilizadoMts}m\n\n*Especificaciones:*\n- Material: Melamina ${material.toUpperCase()}\n- Herrajes: ${herraje.toUpperCase()}\n\n*Precio:* $${resultado.precioTotal.toLocaleString('es-CO')} COP.`;
+                    window.open(`https://wa.me/573001234567?text=${encodeURIComponent(texto)}`, '_blank');
+                  }}
+                  className="w-full bg-amber-600 hover:bg-amber-700 text-white text-center font-bold py-3.5 rounded-xl transition-all shadow-md mt-6 text-sm"
+                >
+                  Confirmar y Enviar a Mi WhatsApp
+                </button>
+              </div>
+            )}
           </div>
+
         </div>
-
       </div>
-    </div>
+    </main>
   );
 }
